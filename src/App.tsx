@@ -92,14 +92,6 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -894,9 +886,52 @@ function TasksCollection({
   })
 
   return (
-    <>
-      <CollectionLayout title="Tasks">
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <CollectionLayout
+      detail={
+        state.taskSheetOpen ? (
+          <TaskContextPanel
+            interaction={taskInteraction}
+            mode={state.taskSheetMode}
+            onBack={() =>
+              setState((current) => ({
+                ...current,
+                taskSheetMode: "context",
+              }))
+            }
+            onClose={() =>
+              setState((current) => ({
+                ...current,
+                taskSheetMode: "context",
+                taskSheetOpen: false,
+              }))
+            }
+            onOpenAccount={() =>
+              onOpenAccount(selectedTask.id, snapshot())
+            }
+            onOpenTask={() => {
+              if (
+                taskExperience(selectedTask).workspace === "review-quote" ||
+                taskExperience(selectedTask).workspace === "generic"
+              ) {
+                onOpenWorkspace(selectedTask.id, snapshot())
+                return
+              }
+
+              setState((current) => ({
+                ...current,
+                taskSheetMode: "action",
+              }))
+            }}
+            returnedFrom={state.returnedFrom}
+            setInteraction={setTaskInteraction}
+            task={selectedTask}
+          />
+        ) : undefined
+      }
+      detailVariant="workspace"
+      title="Tasks"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs
             onValueChange={(value) =>
@@ -980,15 +1015,24 @@ function TasksCollection({
                 <TableHead>Due</TableHead>
                 <TableHead>Task</TableHead>
                 <TableHead>Account</TableHead>
-                <TableHead>Reference</TableHead>
+                <TableHead
+                  className={state.taskSheetOpen ? "hidden" : undefined}
+                >
+                  Reference
+                </TableHead>
                 <TableHead>Priority</TableHead>
-                <TableHead>Assignee</TableHead>
+                <TableHead
+                  className={state.taskSheetOpen ? "hidden" : undefined}
+                >
+                  Assignee
+                </TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredTasks.map((task) => (
                 <TaskTableRow
+                  compact={state.taskSheetOpen}
                   key={task.id}
                   onSelect={() =>
                     setState((current) => ({
@@ -1010,56 +1054,19 @@ function TasksCollection({
             </TableBody>
           </Table>
         </div>
-        </div>
-      </CollectionLayout>
-      <TaskContextSheet
-        interaction={taskInteraction}
-        mode={state.taskSheetMode}
-        onBack={() =>
-          setState((current) => ({
-            ...current,
-            taskSheetMode: "context",
-          }))
-        }
-        onOpenAccount={() =>
-          onOpenAccount(selectedTask.id, snapshot())
-        }
-        onOpenChange={(open) =>
-          setState((current) => ({
-            ...current,
-            taskSheetMode: open ? current.taskSheetMode : "context",
-            taskSheetOpen: open,
-          }))
-        }
-        onOpenTask={() => {
-          if (
-            taskExperience(selectedTask).workspace === "review-quote" ||
-            taskExperience(selectedTask).workspace === "generic"
-          ) {
-            onOpenWorkspace(selectedTask.id, snapshot())
-            return
-          }
-
-          setState((current) => ({
-            ...current,
-            taskSheetMode: "action",
-          }))
-        }}
-        open={state.taskSheetOpen}
-        returnedFrom={state.returnedFrom}
-        setInteraction={setTaskInteraction}
-        task={selectedTask}
-      />
-    </>
+      </div>
+    </CollectionLayout>
   )
 }
 
 function TaskTableRow({
+  compact,
   onSelect,
   selected,
   status,
   task,
 }: {
+  compact: boolean
   onSelect: () => void
   selected: boolean
   status: string
@@ -1093,11 +1100,13 @@ function TaskTableRow({
         {task.title}
       </TableCell>
       <TableCell>{task.accountName}</TableCell>
-      <TableCell className="max-w-56 whitespace-normal">
+      <TableCell
+        className={cn("max-w-56 whitespace-normal", compact && "hidden")}
+      >
         {task.opportunityName}
       </TableCell>
       <TableCell>{task.priority}</TableCell>
-      <TableCell>{task.assignee}</TableCell>
+      <TableCell className={cn(compact && "hidden")}>{task.assignee}</TableCell>
       <TableCell>
         <Badge variant={status === "Open" ? "outline" : "secondary"}>
           {status}
@@ -1162,14 +1171,13 @@ function taskExperience(task: TaskRecord): TaskExperience {
   )
 }
 
-function TaskContextSheet({
+function TaskContextPanel({
   interaction,
   mode,
   onBack,
+  onClose,
   onOpenAccount,
-  onOpenChange,
   onOpenTask,
-  open,
   returnedFrom,
   setInteraction,
   task,
@@ -1177,10 +1185,9 @@ function TaskContextSheet({
   interaction: TaskInteractionState
   mode: TasksCollectionState["taskSheetMode"]
   onBack: () => void
+  onClose: () => void
   onOpenAccount: () => void
-  onOpenChange: (open: boolean) => void
   onOpenTask: () => void
-  open: boolean
   returnedFrom?: string
   setInteraction: React.Dispatch<React.SetStateAction<TaskInteractionState>>
   task: TaskRecord
@@ -1190,9 +1197,6 @@ function TaskContextSheet({
   const outcome = interaction.outcomes[task.id]
   const draft = interaction.drafts[task.id] ?? ""
   const noticeConfirmed = interaction.noticeConfirmed[task.id] ?? false
-  const isMessageWorkspace =
-    experience.workspace === "collect-information" ||
-    experience.workspace === "send-notice"
 
   const updateDraft = (value: string) => {
     setInteraction((current) => ({
@@ -1200,6 +1204,10 @@ function TaskContextSheet({
       drafts: { ...current.drafts, [task.id]: value },
     }))
   }
+
+  useLayoutEffect(() => {
+    contentRef.current?.focus()
+  }, [mode, task.id])
 
   const completeMessageTask = () => {
     const isInformationRequest = experience.workspace === "collect-information"
@@ -1239,7 +1247,6 @@ function TaskContextSheet({
         event.metaKey ||
         event.shiftKey ||
         mode !== "context" ||
-        !open ||
         isEditing
       ) {
         return
@@ -1254,28 +1261,20 @@ function TaskContextSheet({
     return () => {
       document.removeEventListener("keydown", handleKeyDown)
     }
-  }, [mode, onOpenTask, open])
+  }, [mode, onOpenTask])
 
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent
-        className={cn(
-          "w-full gap-0 p-0",
-          mode === "action" && isMessageWorkspace
-            ? "sm:max-w-[46rem]"
-            : "sm:max-w-[30rem]"
-        )}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault()
-          contentRef.current?.focus()
-        }}
-        ref={contentRef}
-        tabIndex={-1}
-      >
-        <SheetHeader className="border-b p-5 pr-14">
+    <aside
+      aria-label={`${experience.title} task view`}
+      className="flex h-full min-h-0 flex-col bg-background outline-none"
+      ref={contentRef}
+      tabIndex={-1}
+    >
+      <header className="border-b p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
           {mode === "action" ? (
             <Button
-              className="mb-3 w-fit"
+              className="w-fit"
               onClick={onBack}
               size="sm"
               type="button"
@@ -1284,92 +1283,110 @@ function TaskContextSheet({
               <ArrowLeftIcon data-icon="inline-start" />
               Back to task
             </Button>
-          ) : null}
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge variant={task.priority === "High" ? "default" : "secondary"}>
-              {task.priority} priority
-            </Badge>
-            <span className="text-sm text-muted-foreground tabular-nums">
-              Due {task.due}
+          ) : (
+            <span className="text-sm font-medium text-muted-foreground">
+              Task view
             </span>
-          </div>
-          <SheetTitle className="text-xl font-semibold text-balance">
-            {mode === "action" ? experience.actionLabel : experience.title}
-          </SheetTitle>
-          <SheetDescription className="text-pretty">
-            {task.accountName} / {task.opportunityName}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          {mode === "context" ? (
-            <TaskContextOverview
-              experience={experience}
-              outcome={outcome}
-              returnedFrom={returnedFrom}
-              task={task}
-            />
-          ) : (
-            <TaskMessageWorkspace
-              draft={draft}
-              experience={experience}
-              noticeConfirmed={noticeConfirmed}
-              onNoticeConfirmed={(checked) =>
-                setInteraction((current) => ({
-                  ...current,
-                  noticeConfirmed: {
-                    ...current.noticeConfirmed,
-                    [task.id]: checked,
-                  },
-                }))
-              }
-              outcome={outcome}
-              task={task}
-              updateDraft={updateDraft}
-            />
           )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Close task view"
+                onClick={onClose}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <XIcon />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Close task view</TooltipContent>
+          </Tooltip>
         </div>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Badge variant={task.priority === "High" ? "default" : "secondary"}>
+            {task.priority} priority
+          </Badge>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            Due {task.due}
+          </span>
+        </div>
+        <h2 className="text-xl font-semibold text-balance">
+          {mode === "action" ? experience.actionLabel : experience.title}
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground text-pretty">
+          {task.accountName} / {task.opportunityName}
+        </p>
+      </header>
 
-        <SheetFooter className="border-t p-5">
-          <Button onClick={onOpenAccount} type="button" variant="outline">
-            <ExternalLinkIcon data-icon="inline-start" />
-            Open account
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        {mode === "context" ? (
+          <TaskContextOverview
+            experience={experience}
+            outcome={outcome}
+            returnedFrom={returnedFrom}
+            task={task}
+          />
+        ) : (
+          <TaskMessageWorkspace
+            draft={draft}
+            experience={experience}
+            noticeConfirmed={noticeConfirmed}
+            onNoticeConfirmed={(checked) =>
+              setInteraction((current) => ({
+                ...current,
+                noticeConfirmed: {
+                  ...current.noticeConfirmed,
+                  [task.id]: checked,
+                },
+              }))
+            }
+            outcome={outcome}
+            task={task}
+            updateDraft={updateDraft}
+          />
+        )}
+      </div>
+
+      <footer className="flex flex-col gap-2 border-t p-5">
+        <Button onClick={onOpenAccount} type="button" variant="outline">
+          <ExternalLinkIcon data-icon="inline-start" />
+          Open account
+        </Button>
+        {mode === "context" ? (
+          <Button
+            aria-keyshortcuts="Enter"
+            className="w-full justify-between"
+            onClick={onOpenTask}
+            type="button"
+          >
+            <span className="min-w-0 truncate">{experience.actionLabel}</span>
+            <kbd className="rounded border border-primary-foreground/40 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground/90">
+              ENT
+            </kbd>
           </Button>
-          {mode === "context" ? (
-            <Button
-              aria-keyshortcuts="Enter"
-              className="w-full justify-between"
-              onClick={onOpenTask}
-              type="button"
-            >
-              <span className="min-w-0 truncate">{experience.actionLabel}</span>
-              <kbd className="rounded border border-primary-foreground/40 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground/90">
-                ENT
-              </kbd>
-            </Button>
-          ) : outcome ? (
-            <Button onClick={onBack} type="button">
-              <CheckIcon data-icon="inline-start" />
-              Back to task
-            </Button>
-          ) : (
-            <Button
-              disabled={
-                draft.trim().length === 0 ||
-                (experience.workspace === "send-notice" && !noticeConfirmed)
-              }
-              onClick={completeMessageTask}
-              type="button"
-            >
-              <SendIcon data-icon="inline-start" />
-              {experience.workspace === "collect-information"
-                ? "Send request and wait for client"
-                : "Send and record delivery"}
-            </Button>
-          )}
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        ) : outcome ? (
+          <Button onClick={onBack} type="button">
+            <CheckIcon data-icon="inline-start" />
+            Back to task
+          </Button>
+        ) : (
+          <Button
+            disabled={
+              draft.trim().length === 0 ||
+              (experience.workspace === "send-notice" && !noticeConfirmed)
+            }
+            onClick={completeMessageTask}
+            type="button"
+          >
+            <SendIcon data-icon="inline-start" />
+            {experience.workspace === "collect-information"
+              ? "Send request and wait for client"
+              : "Send and record delivery"}
+          </Button>
+        )}
+      </footer>
+    </aside>
   )
 }
 
@@ -1920,22 +1937,38 @@ function PassiveDestination({ title }: { title: string }) {
 function CollectionLayout({
   children,
   detail,
+  detailVariant = "rail",
   title,
 }: {
   children: ReactNode
   detail?: ReactNode
+  detailVariant?: "rail" | "workspace"
   title: string
 }) {
+  const hasWorkspaceDetail = Boolean(detail && detailVariant === "workspace")
+
   return (
-    <div className="flex h-svh min-w-0 flex-col">
+    <div
+      className={cn(
+        "flex min-w-0 flex-col",
+        hasWorkspaceDetail ? "min-h-svh xl:h-svh" : "h-svh"
+      )}
+    >
       <div
-        className={
-          detail
-            ? "grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem]"
-            : "grid min-h-0 flex-1 grid-cols-1"
-        }
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-1",
+          detail &&
+            (hasWorkspaceDetail
+              ? "xl:grid-cols-[minmax(0,3fr)_minmax(28rem,2fr)]"
+              : "xl:grid-cols-[minmax(0,1fr)_20rem]")
+        )}
       >
-        <main className="flex min-h-0 min-w-0 flex-col gap-6 p-4 sm:p-6">
+        <main
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col gap-6 p-4 sm:p-6",
+            hasWorkspaceDetail && "min-h-[34rem] xl:min-h-0"
+          )}
+        >
           <div className="flex min-w-0 items-center gap-2">
             <SidebarTrigger className="md:hidden" />
             <h1 className="text-2xl font-semibold text-balance">{title}</h1>
@@ -1943,7 +1976,14 @@ function CollectionLayout({
           {children}
         </main>
         {detail ? (
-          <aside className="min-h-0 border-t p-4 sm:p-6 xl:border-l xl:border-t-0">
+          <aside
+            className={cn(
+              "min-h-0 border-t xl:border-l xl:border-t-0",
+              hasWorkspaceDetail
+                ? "min-h-[32rem] overflow-hidden"
+                : "p-4 sm:p-6"
+            )}
+          >
             {detail}
           </aside>
         ) : null}
