@@ -925,7 +925,6 @@ function TasksCollection({
                 taskSheetMode: "action",
               }))
             }}
-            returnedFrom={state.returnedFrom}
             setInteraction={setTaskInteraction}
             task={selectedTask}
           />
@@ -997,11 +996,6 @@ function TasksCollection({
             Assignee = a@aol.com, due date = Upcoming
           </Badge>
         </div>
-        {state.returnedFrom ? (
-          <div className="text-sm text-muted-foreground">
-            Returned from {state.returnedFrom}
-          </div>
-        ) : null}
         <div
           className="min-h-0 flex-1 overflow-auto rounded-lg border"
           onScroll={(event) => {
@@ -1185,7 +1179,6 @@ function TaskContextPanel({
   onClose,
   onOpenAccount,
   onOpenTask,
-  returnedFrom,
   setInteraction,
   task,
 }: {
@@ -1195,7 +1188,6 @@ function TaskContextPanel({
   onClose: () => void
   onOpenAccount: () => void
   onOpenTask: () => void
-  returnedFrom?: string
   setInteraction: React.Dispatch<React.SetStateAction<TaskInteractionState>>
   task: TaskRecord
 }) {
@@ -1331,7 +1323,6 @@ function TaskContextPanel({
           <TaskContextOverview
             experience={experience}
             outcome={outcome}
-            returnedFrom={returnedFrom}
             task={task}
           />
         ) : (
@@ -1400,12 +1391,10 @@ function TaskContextPanel({
 function TaskContextOverview({
   experience,
   outcome,
-  returnedFrom,
   task,
 }: {
   experience: TaskExperience
   outcome?: TaskOutcome
-  returnedFrom?: string
   task: TaskRecord
 }) {
   return (
@@ -1416,14 +1405,6 @@ function TaskContextOverview({
           <AlertTitle>{outcome.status}</AlertTitle>
           <AlertDescription>
             {outcome.result}. Updated {outcome.completedAt}.
-          </AlertDescription>
-        </Alert>
-      ) : returnedFrom ? (
-        <Alert>
-          <CircleHelpIcon />
-          <AlertTitle>Returned from {returnedFrom}</AlertTitle>
-          <AlertDescription>
-            Your selected task and place in the list were preserved.
           </AlertDescription>
         </Alert>
       ) : null}
