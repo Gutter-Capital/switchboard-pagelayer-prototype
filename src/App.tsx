@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react"
 import {
@@ -153,6 +154,7 @@ type TasksCollectionState = {
   selectedTaskId: string
   taskSheetMode: "context" | "action"
   taskSheetOpen: boolean
+  taskViewWidth: number
   scrollTop: number
   returnedFrom?: string
 }
@@ -232,6 +234,7 @@ const defaultTasksState: TasksCollectionState = {
   selectedTaskId: "task-bob-requote",
   taskSheetMode: "context",
   taskSheetOpen: false,
+  taskViewWidth: 520,
   scrollTop: 42,
 }
 
@@ -928,7 +931,11 @@ function TasksCollection({
           />
         ) : undefined
       }
+      detailWidth={state.taskViewWidth}
       detailVariant="workspace"
+      onDetailWidthChange={(taskViewWidth) =>
+        setState((current) => ({ ...current, taskViewWidth }))
+      }
       title="Tasks"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -1937,15 +1944,49 @@ function PassiveDestination({ title }: { title: string }) {
 function CollectionLayout({
   children,
   detail,
+  detailWidth = 520,
   detailVariant = "rail",
+  onDetailWidthChange,
   title,
 }: {
   children: ReactNode
   detail?: ReactNode
+  detailWidth?: number
   detailVariant?: "rail" | "workspace"
+  onDetailWidthChange?: (width: number) => void
   title: string
 }) {
   const hasWorkspaceDetail = Boolean(detail && detailVariant === "workspace")
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const resizeOriginRef = useRef<
+    | {
+        max: number
+        min: number
+        pointerX: number
+        width: number
+      }
+    | undefined
+  >(undefined)
+  const [isWorkspaceResizing, setIsWorkspaceResizing] = useState(false)
+  const workspaceDetailMinWidth = 384
+  const workspaceDetailMaxWidth = 760
+
+  const workspaceResizeBounds = () => {
+    const layoutWidth = layoutRef.current?.getBoundingClientRect().width ?? 1280
+
+    return {
+      max: Math.max(
+        workspaceDetailMinWidth,
+        Math.min(workspaceDetailMaxWidth, layoutWidth - 560)
+      ),
+      min: workspaceDetailMinWidth,
+    }
+  }
+
+  const resizeWorkspaceDetail = (nextWidth: number) => {
+    const { max, min } = workspaceResizeBounds()
+    onDetailWidthChange?.(Math.min(Math.max(nextWidth, min), max))
+  }
 
   return (
     <div
@@ -1959,9 +2000,17 @@ function CollectionLayout({
           "grid min-h-0 flex-1 grid-cols-1",
           detail &&
             (hasWorkspaceDetail
-              ? "xl:grid-cols-[minmax(0,3fr)_minmax(28rem,2fr)]"
+              ? "xl:grid-cols-[minmax(0,1fr)_var(--task-detail-width)]"
               : "xl:grid-cols-[minmax(0,1fr)_20rem]")
         )}
+        ref={layoutRef}
+        style={
+          hasWorkspaceDetail
+            ? ({
+                "--task-detail-width": `${detailWidth}px`,
+              } as CSSProperties)
+            : undefined
+        }
       >
         <main
           className={cn(
@@ -1980,10 +2029,84 @@ function CollectionLayout({
             className={cn(
               "min-h-0 border-t xl:border-l xl:border-t-0",
               hasWorkspaceDetail
-                ? "min-h-[32rem] overflow-hidden"
+                ? "relative min-h-[32rem] overflow-visible"
                 : "p-4 sm:p-6"
             )}
           >
+            {hasWorkspaceDetail ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    aria-label="Resize task view"
+                    aria-orientation="vertical"
+                    aria-valuemax={workspaceDetailMaxWidth}
+                    aria-valuemin={workspaceDetailMinWidth}
+                    aria-valuenow={detailWidth}
+                    aria-valuetext={`${detailWidth} pixels wide`}
+                    className={cn(
+                      "group absolute inset-y-0 left-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none select-none xl:block",
+                      isWorkspaceResizing && "cursor-col-resize"
+                    )}
+                    onDoubleClick={() => resizeWorkspaceDetail(520)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowLeft") {
+                        event.preventDefault()
+                        resizeWorkspaceDetail(detailWidth + 24)
+                      } else if (event.key === "ArrowRight") {
+                        event.preventDefault()
+                        resizeWorkspaceDetail(detailWidth - 24)
+                      } else if (event.key === "Home") {
+                        event.preventDefault()
+                        resizeWorkspaceDetail(520)
+                      }
+                    }}
+                    onPointerCancel={() => {
+                      resizeOriginRef.current = undefined
+                      setIsWorkspaceResizing(false)
+                    }}
+                    onPointerDown={(event) => {
+                      const { max, min } = workspaceResizeBounds()
+                      resizeOriginRef.current = {
+                        max,
+                        min,
+                        pointerX: event.clientX,
+                        width: detailWidth,
+                      }
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                      setIsWorkspaceResizing(true)
+                    }}
+                    onPointerMove={(event) => {
+                      const origin = resizeOriginRef.current
+
+                      if (!origin) {
+                        return
+                      }
+
+                      const nextWidth =
+                        origin.width + origin.pointerX - event.clientX
+                      onDetailWidthChange?.(
+                        Math.min(Math.max(nextWidth, origin.min), origin.max)
+                      )
+                    }}
+                    onPointerUp={(event) => {
+                      resizeOriginRef.current = undefined
+                      event.currentTarget.releasePointerCapture(event.pointerId)
+                      setIsWorkspaceResizing(false)
+                    }}
+                    role="separator"
+                    type="button"
+                  >
+                    <span
+                      className={cn(
+                        "absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-foreground/40 group-focus-visible:bg-ring",
+                        isWorkspaceResizing && "bg-ring"
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Drag to resize</TooltipContent>
+              </Tooltip>
+            ) : null}
             {detail}
           </aside>
         ) : null}
