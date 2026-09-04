@@ -24,13 +24,21 @@ import {
   BellIcon,
   BriefcaseBusinessIcon,
   Building2Icon,
+  CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CircleHelpIcon,
   CircleUserRoundIcon,
   ClipboardCheckIcon,
+  ExternalLinkIcon,
+  FileSearch2Icon,
   FileTextIcon,
   LayoutDashboardIcon,
+  MailIcon,
+  PaperclipIcon,
   SearchIcon,
+  SendIcon,
+  SparklesIcon,
   SettingsIcon,
   StoreIcon,
   XIcon,
@@ -65,6 +73,7 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
   FieldSet,
 } from "@/components/ui/field"
 import {
@@ -82,6 +91,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import {
   Sidebar,
   SidebarContent,
@@ -116,6 +133,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 import {
   accounts,
   bobAccount,
@@ -141,6 +159,8 @@ type TasksCollectionState = {
   dueWindow: "today" | "week" | "upcoming"
   query: string
   selectedTaskId: string
+  taskSheetMode: "context" | "action"
+  taskSheetOpen: boolean
   scrollTop: number
   returnedFrom?: string
 }
@@ -167,6 +187,22 @@ type QuoteRequestInteractionState = {
       submittedBy: string
     }
   >
+}
+
+type TaskOutcome = {
+  completedAt: string
+  result: string
+  status:
+    | "Ready to present"
+    | "Sent"
+    | "Waiting on carrier"
+    | "Waiting on client"
+}
+
+type TaskInteractionState = {
+  drafts: Record<string, string>
+  noticeConfirmed: Record<string, boolean>
+  outcomes: Record<string, TaskOutcome>
 }
 
 type PageLayerOrigin = {
@@ -202,6 +238,8 @@ const defaultTasksState: TasksCollectionState = {
   dueWindow: "upcoming",
   query: "Commercial Property",
   selectedTaskId: "task-bob-requote",
+  taskSheetMode: "context",
+  taskSheetOpen: false,
   scrollTop: 42,
 }
 
@@ -223,6 +261,17 @@ const defaultQuoteRequestsTableState: QuoteRequestsTableState = {
 
 const defaultQuoteRequestInteractionState: QuoteRequestInteractionState = {
   submittedResponses: {},
+}
+
+const defaultTaskInteractionState: TaskInteractionState = {
+  drafts: {
+    "task-bob-requote":
+      "Hi Bob,\n\nCoterie is reviewing the property coverage for the municipal renovation project and needs a few roof details before they can continue:\n\n- Year the roof was last replaced\n- Roofing material\n- Whether the planned work will be complete before final inspection\n\nCould you send those details by Friday?\n\nThank you,\nAlex",
+    "task-botl-info":
+      "Hi Dana,\n\nTravelers has issued a cancellation notice for the property policy because the August installment remains unpaid. Payment must be received by September 12 to prevent cancellation on September 15, 2026.\n\nI have attached the carrier notice and payment instructions. Please let me know once payment has been submitted so I can confirm receipt with Travelers.\n\nThank you,\nAlex",
+  },
+  noticeConfirmed: {},
+  outcomes: {},
 }
 
 const navDestinations: NavDestination[] = [
@@ -289,6 +338,8 @@ function PrototypeApp() {
     useState<QuoteRequestsTableState>(defaultQuoteRequestsTableState)
   const [quoteRequestInteraction, setQuoteRequestInteraction] =
     useState<QuoteRequestInteractionState>(defaultQuoteRequestInteractionState)
+  const [taskInteraction, setTaskInteraction] =
+    useState<TaskInteractionState>(defaultTaskInteractionState)
 
   return (
     <SidebarProvider defaultOpen>
@@ -300,6 +351,8 @@ function PrototypeApp() {
         setQuoteRequestInteraction={setQuoteRequestInteraction}
         setQuoteRequestsTableState={setQuoteRequestsTableState}
         setTasksState={setTasksState}
+        setTaskInteraction={setTaskInteraction}
+        taskInteraction={taskInteraction}
         tasksState={tasksState}
       />
     </SidebarProvider>
@@ -314,6 +367,8 @@ function AppShell({
   setQuoteRequestInteraction,
   setQuoteRequestsTableState,
   setTasksState,
+  setTaskInteraction,
+  taskInteraction,
   tasksState,
 }: {
   accountsState: AccountsCollectionState
@@ -327,6 +382,8 @@ function AppShell({
     React.SetStateAction<QuoteRequestsTableState>
   >
   setTasksState: React.Dispatch<React.SetStateAction<TasksCollectionState>>
+  setTaskInteraction: React.Dispatch<React.SetStateAction<TaskInteractionState>>
+  taskInteraction: TaskInteractionState
   tasksState: TasksCollectionState
 }) {
   const location = useLocation()
@@ -400,7 +457,7 @@ function AppShell({
     restoreOriginState,
   ])
 
-  const openTaskQuote = useCallback(
+  const openTaskWorkspace = useCallback(
     (taskId: string, snapshot: TasksCollectionState) => {
       const origin: PageLayerOrigin = {
         kind: "tasks",
@@ -411,9 +468,26 @@ function AppShell({
         tasksState: snapshot,
       }
 
-      const task = findTask(taskId)
+      navigate(`/tasks/${taskId}/workspace`, {
+        state: { pageLayerOrigin: origin, activeTaskId: taskId },
+      })
+    },
+    [navigate]
+  )
 
-      navigate(taskQuoteDestinationPath(task), {
+  const openTaskAccountLayer = useCallback(
+    (taskId: string, snapshot: TasksCollectionState) => {
+      const task = findTask(taskId)
+      const origin: PageLayerOrigin = {
+        kind: "tasks",
+        closePath: "/tasks",
+        direct: false,
+        historyIndex: historyIndex(),
+        label: "My Tasks",
+        tasksState: snapshot,
+      }
+
+      navigate(`/accounts/${task.accountId}`, {
         state: { pageLayerOrigin: origin, activeTaskId: taskId },
       })
     },
@@ -484,9 +558,12 @@ function AppShell({
             path="/tasks"
             element={
               <TasksCollection
-                onOpenQuote={openTaskQuote}
+                onOpenAccount={openTaskAccountLayer}
+                onOpenWorkspace={openTaskWorkspace}
                 setState={setTasksState}
+                setTaskInteraction={setTaskInteraction}
                 state={tasksState}
+                taskInteraction={taskInteraction}
               />
             }
           />
@@ -496,6 +573,19 @@ function AppShell({
               <TaskQuoteRouteRedirect
                 activeTaskId={activeTaskId}
                 origin={pageLayerOrigin}
+              />
+            }
+          />
+          <Route
+            path="/tasks/:taskId/workspace"
+            element={
+              <TaskWorkspaceLayer
+                activeTaskId={activeTaskId}
+                navigateInsideLayer={navigateInsideLayer}
+                onClose={closePageLayer}
+                origin={pageLayerOrigin}
+                setTaskInteraction={setTaskInteraction}
+                taskInteraction={taskInteraction}
               />
             }
           />
@@ -670,13 +760,19 @@ function AppSidebar({
 }
 
 function TasksCollection({
-  onOpenQuote,
+  onOpenAccount,
+  onOpenWorkspace,
   setState,
+  setTaskInteraction,
   state,
+  taskInteraction,
 }: {
-  onOpenQuote: (taskId: string, snapshot: TasksCollectionState) => void
+  onOpenAccount: (taskId: string, snapshot: TasksCollectionState) => void
+  onOpenWorkspace: (taskId: string, snapshot: TasksCollectionState) => void
   setState: React.Dispatch<React.SetStateAction<TasksCollectionState>>
+  setTaskInteraction: React.Dispatch<React.SetStateAction<TaskInteractionState>>
   state: TasksCollectionState
+  taskInteraction: TaskInteractionState
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const filteredTasks = useMemo(() => {
@@ -718,12 +814,12 @@ function TasksCollection({
       const isTaskSelectFocused =
         target instanceof Element &&
         Boolean(target.closest("[data-task-select-control]"))
-      const isControlFocused =
+      const isEditing =
         target instanceof Element &&
         !isTaskSelectFocused &&
         Boolean(
           target.closest(
-            'a, button, input, textarea, select, [contenteditable="true"], [role="button"], [role="checkbox"], [role="textbox"], [role="tab"], [role="radio"]'
+            'input, textarea, select, [contenteditable="true"], [role="checkbox"], [role="textbox"], [role="tab"], [role="radio"]'
           )
         )
 
@@ -734,7 +830,9 @@ function TasksCollection({
         event.ctrlKey ||
         event.metaKey ||
         event.shiftKey ||
-        isControlFocused ||
+        isEditing ||
+        !state.taskSheetOpen ||
+        state.taskSheetMode !== "context" ||
         filteredTasks.length === 0
       ) {
         return
@@ -764,6 +862,7 @@ function TasksCollection({
         ...current,
         scrollTop: scrollRef.current?.scrollTop ?? current.scrollTop,
         selectedTaskId: filteredTasks[nextIndex].id,
+        taskSheetMode: "context",
       }))
     }
 
@@ -772,7 +871,13 @@ function TasksCollection({
     return () => {
       document.removeEventListener("keydown", handleKeyDown)
     }
-  }, [filteredTasks, selectedTask.id, setState])
+  }, [
+    filteredTasks,
+    selectedTask.id,
+    setState,
+    state.taskSheetMode,
+    state.taskSheetOpen,
+  ])
 
   useLayoutEffect(() => {
     const selectedRow = scrollRef.current?.querySelector<HTMLElement>(
@@ -789,17 +894,9 @@ function TasksCollection({
   })
 
   return (
-    <CollectionLayout
-      detail={
-        <TaskDetails
-          onOpen={() => onOpenQuote(selectedTask.id, snapshot())}
-          returnedFrom={state.returnedFrom}
-          task={selectedTask}
-        />
-      }
-      title="Tasks"
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <>
+      <CollectionLayout title="Tasks">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs
             onValueChange={(value) =>
@@ -897,34 +994,91 @@ function TasksCollection({
                     setState((current) => ({
                       ...current,
                       selectedTaskId: task.id,
+                      taskSheetMode: "context",
+                      taskSheetOpen: true,
                     }))
                   }
-                  selected={task.id === selectedTask.id}
+                  selected={
+                    state.taskSheetOpen && task.id === selectedTask.id
+                  }
+                  status={
+                    taskInteraction.outcomes[task.id]?.status ?? task.status
+                  }
                   task={task}
                 />
               ))}
             </TableBody>
           </Table>
         </div>
-      </div>
-    </CollectionLayout>
+        </div>
+      </CollectionLayout>
+      <TaskContextSheet
+        interaction={taskInteraction}
+        mode={state.taskSheetMode}
+        onBack={() =>
+          setState((current) => ({
+            ...current,
+            taskSheetMode: "context",
+          }))
+        }
+        onOpenAccount={() =>
+          onOpenAccount(selectedTask.id, snapshot())
+        }
+        onOpenChange={(open) =>
+          setState((current) => ({
+            ...current,
+            taskSheetMode: open ? current.taskSheetMode : "context",
+            taskSheetOpen: open,
+          }))
+        }
+        onOpenTask={() => {
+          if (
+            taskExperience(selectedTask).workspace === "review-quote" ||
+            taskExperience(selectedTask).workspace === "generic"
+          ) {
+            onOpenWorkspace(selectedTask.id, snapshot())
+            return
+          }
+
+          setState((current) => ({
+            ...current,
+            taskSheetMode: "action",
+          }))
+        }}
+        open={state.taskSheetOpen}
+        returnedFrom={state.returnedFrom}
+        setInteraction={setTaskInteraction}
+        task={selectedTask}
+      />
+    </>
   )
 }
 
 function TaskTableRow({
   onSelect,
   selected,
+  status,
   task,
 }: {
   onSelect: () => void
   selected: boolean
+  status: string
   task: TaskRecord
 }) {
   return (
     <TableRow
+      aria-selected={selected}
+      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       data-task-id={task.id}
       data-state={selected ? "selected" : undefined}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
+      tabIndex={0}
     >
       <TableCell>
         <Checkbox
@@ -945,23 +1099,126 @@ function TaskTableRow({
       <TableCell>{task.priority}</TableCell>
       <TableCell>{task.assignee}</TableCell>
       <TableCell>
-        <Badge variant={task.status === "Done" ? "secondary" : "outline"}>
-          {task.status}
+        <Badge variant={status === "Open" ? "outline" : "secondary"}>
+          {status}
         </Badge>
       </TableCell>
     </TableRow>
   )
 }
 
-function TaskDetails({
-  onOpen,
+type TaskExperience = {
+  actionLabel: string
+  sourceExcerpt: string
+  sourceLabel: string
+  summary: string
+  title: string
+  workspace: "collect-information" | "review-quote" | "send-notice" | "generic"
+}
+
+const taskExperiences: Partial<Record<string, TaskExperience>> = {
+  "task-bob-requote": {
+    actionLabel: "Draft client request",
+    sourceExcerpt:
+      "Please confirm the roof replacement year, material, and whether the work will be completed before final inspection.",
+    sourceLabel: "Coterie underwriting email - Aug 27, 2026",
+    summary:
+      "Coterie cannot finish reviewing the property submission until the roof details are confirmed.",
+    title: "Coterie underwriting information request",
+    workspace: "collect-information",
+  },
+  "task-bottle-review": {
+    actionLabel: "Review renewal quote",
+    sourceExcerpt:
+      "The Hartford renewal proposal is ready for review. Premium and water-damage terms changed from the expiring policy.",
+    sourceLabel: "Hartford renewal email - Aug 26, 2026",
+    summary:
+      "The renewal arrived with material coverage and premium changes that need a broker decision before it is presented.",
+    title: "Hartford renewal quote",
+    workspace: "review-quote",
+  },
+  "task-botl-info": {
+    actionLabel: "Prepare client notice",
+    sourceExcerpt:
+      "Payment must be received by Sep 12 to prevent cancellation effective Sep 15, 2026.",
+    sourceLabel: "Travelers cancellation notice - Aug 27, 2026",
+    summary:
+      "BOTL needs to receive the cancellation warning and payment instructions before the carrier deadline.",
+    title: "Travelers cancellation notice",
+    workspace: "send-notice",
+  },
+}
+
+function taskExperience(task: TaskRecord): TaskExperience {
+  return (
+    taskExperiences[task.id] ?? {
+      actionLabel: "Open task workspace",
+      sourceExcerpt: `New activity requires follow-up on ${task.opportunityName}.`,
+      sourceLabel: `Carrier activity - ${currentDateLabel}`,
+      summary: `${task.title} is the next step needed to move this opportunity forward.`,
+      title: task.title,
+      workspace: "generic",
+    }
+  )
+}
+
+function TaskContextSheet({
+  interaction,
+  mode,
+  onBack,
+  onOpenAccount,
+  onOpenChange,
+  onOpenTask,
+  open,
   returnedFrom,
+  setInteraction,
   task,
 }: {
-  onOpen: () => void
+  interaction: TaskInteractionState
+  mode: TasksCollectionState["taskSheetMode"]
+  onBack: () => void
+  onOpenAccount: () => void
+  onOpenChange: (open: boolean) => void
+  onOpenTask: () => void
+  open: boolean
   returnedFrom?: string
+  setInteraction: React.Dispatch<React.SetStateAction<TaskInteractionState>>
   task: TaskRecord
 }) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const experience = taskExperience(task)
+  const outcome = interaction.outcomes[task.id]
+  const draft = interaction.drafts[task.id] ?? ""
+  const noticeConfirmed = interaction.noticeConfirmed[task.id] ?? false
+  const isMessageWorkspace =
+    experience.workspace === "collect-information" ||
+    experience.workspace === "send-notice"
+
+  const updateDraft = (value: string) => {
+    setInteraction((current) => ({
+      ...current,
+      drafts: { ...current.drafts, [task.id]: value },
+    }))
+  }
+
+  const completeMessageTask = () => {
+    const isInformationRequest = experience.workspace === "collect-information"
+
+    setInteraction((current) => ({
+      ...current,
+      outcomes: {
+        ...current.outcomes,
+        [task.id]: {
+          completedAt: "Aug 27, 2026, 2:18 PM",
+          result: isInformationRequest
+            ? "Client request sent to bob@bscbuilders.com"
+            : "Cancellation notice and payment instructions sent to dana@botl.com",
+          status: isInformationRequest ? "Waiting on client" : "Sent",
+        },
+      },
+    }))
+  }
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target
@@ -981,13 +1238,15 @@ function TaskDetails({
         event.ctrlKey ||
         event.metaKey ||
         event.shiftKey ||
+        mode !== "context" ||
+        !open ||
         isEditing
       ) {
         return
       }
 
       event.preventDefault()
-      onOpen()
+      onOpenTask()
     }
 
     document.addEventListener("keydown", handleKeyDown)
@@ -995,42 +1254,338 @@ function TaskDetails({
     return () => {
       document.removeEventListener("keydown", handleKeyDown)
     }
-  }, [onOpen])
+  }, [mode, onOpenTask, open])
 
   return (
-    <DetailRail title="Task details">
-      <DetailItem label="Account" value={task.accountName} />
-      <DetailItem label="Opportunity" value={task.opportunityName} />
-      <DetailItem label="Stage" value={task.stage} />
-      <DetailItem label="Effective date" value={task.effectiveDate} />
-      <Separator />
-      <DetailItem label="Line" value={task.line} />
-      {returnedFrom ? (
-        <>
-          <Separator />
-          <DetailItem label="Completed" value="Aug 27, 2026, 10:42 AM" />
-          <DetailItem label="Result" value="Carrier response sent" />
-          <DetailItem
-            label="Quoting summary"
-            value="2 quoted, 1 pending review, 1 needs information, 3 declined"
-          />
-        </>
-      ) : (
-        <DetailItem label="Next action" value={task.title} />
-      )}
-      <Button
-        aria-keyshortcuts="Enter"
-        aria-label="Open quote request"
-        className="w-full justify-between"
-        onClick={onOpen}
-        type="button"
+    <Sheet onOpenChange={onOpenChange} open={open}>
+      <SheetContent
+        className={cn(
+          "w-full gap-0 p-0",
+          mode === "action" && isMessageWorkspace
+            ? "sm:max-w-[46rem]"
+            : "sm:max-w-[30rem]"
+        )}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          contentRef.current?.focus()
+        }}
+        ref={contentRef}
+        tabIndex={-1}
       >
-        <span className="min-w-0 truncate">Open quote request</span>
-        <kbd className="rounded border border-primary-foreground/40 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground/90">
-          ENT
-        </kbd>
-      </Button>
-    </DetailRail>
+        <SheetHeader className="border-b p-5 pr-14">
+          {mode === "action" ? (
+            <Button
+              className="mb-3 w-fit"
+              onClick={onBack}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowLeftIcon data-icon="inline-start" />
+              Back to task
+            </Button>
+          ) : null}
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge variant={task.priority === "High" ? "default" : "secondary"}>
+              {task.priority} priority
+            </Badge>
+            <span className="text-sm text-muted-foreground tabular-nums">
+              Due {task.due}
+            </span>
+          </div>
+          <SheetTitle className="text-xl font-semibold text-balance">
+            {mode === "action" ? experience.actionLabel : experience.title}
+          </SheetTitle>
+          <SheetDescription className="text-pretty">
+            {task.accountName} / {task.opportunityName}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          {mode === "context" ? (
+            <TaskContextOverview
+              experience={experience}
+              outcome={outcome}
+              returnedFrom={returnedFrom}
+              task={task}
+            />
+          ) : (
+            <TaskMessageWorkspace
+              draft={draft}
+              experience={experience}
+              noticeConfirmed={noticeConfirmed}
+              onNoticeConfirmed={(checked) =>
+                setInteraction((current) => ({
+                  ...current,
+                  noticeConfirmed: {
+                    ...current.noticeConfirmed,
+                    [task.id]: checked,
+                  },
+                }))
+              }
+              outcome={outcome}
+              task={task}
+              updateDraft={updateDraft}
+            />
+          )}
+        </div>
+
+        <SheetFooter className="border-t p-5">
+          <Button onClick={onOpenAccount} type="button" variant="outline">
+            <ExternalLinkIcon data-icon="inline-start" />
+            Open account
+          </Button>
+          {mode === "context" ? (
+            <Button
+              aria-keyshortcuts="Enter"
+              className="w-full justify-between"
+              onClick={onOpenTask}
+              type="button"
+            >
+              <span className="min-w-0 truncate">{experience.actionLabel}</span>
+              <kbd className="rounded border border-primary-foreground/40 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground/90">
+                ENT
+              </kbd>
+            </Button>
+          ) : outcome ? (
+            <Button onClick={onBack} type="button">
+              <CheckIcon data-icon="inline-start" />
+              Back to task
+            </Button>
+          ) : (
+            <Button
+              disabled={
+                draft.trim().length === 0 ||
+                (experience.workspace === "send-notice" && !noticeConfirmed)
+              }
+              onClick={completeMessageTask}
+              type="button"
+            >
+              <SendIcon data-icon="inline-start" />
+              {experience.workspace === "collect-information"
+                ? "Send request and wait for client"
+                : "Send and record delivery"}
+            </Button>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function TaskContextOverview({
+  experience,
+  outcome,
+  returnedFrom,
+  task,
+}: {
+  experience: TaskExperience
+  outcome?: TaskOutcome
+  returnedFrom?: string
+  task: TaskRecord
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      {outcome ? (
+        <Alert>
+          <CheckIcon />
+          <AlertTitle>{outcome.status}</AlertTitle>
+          <AlertDescription>
+            {outcome.result}. Updated {outcome.completedAt}.
+          </AlertDescription>
+        </Alert>
+      ) : returnedFrom ? (
+        <Alert>
+          <CircleHelpIcon />
+          <AlertTitle>Returned from {returnedFrom}</AlertTitle>
+          <AlertDescription>
+            Your selected task and place in the list were preserved.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <section className="flex flex-col gap-2">
+        <h3 className="font-medium">Why this task</h3>
+        <p className="text-sm leading-6 text-muted-foreground text-pretty">
+          {experience.summary}
+        </p>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-4">
+        <h3 className="font-medium">Account context</h3>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
+          <ContextItem label="Account" value={task.accountName} />
+          <ContextItem label="Line" value={task.line} />
+          <ContextItem label="Stage" value={task.stage} />
+          <ContextItem label="Effective date" value={task.effectiveDate} />
+        </dl>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <MailIcon />
+          <h3 className="font-medium">Source</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {experience.sourceLabel}
+        </p>
+        <blockquote className="border-l-2 pl-4 text-sm leading-6 text-muted-foreground text-pretty">
+          {experience.sourceExcerpt}
+        </blockquote>
+      </section>
+    </div>
+  )
+}
+
+function TaskMessageWorkspace({
+  draft,
+  experience,
+  noticeConfirmed,
+  onNoticeConfirmed,
+  outcome,
+  task,
+  updateDraft,
+}: {
+  draft: string
+  experience: TaskExperience
+  noticeConfirmed: boolean
+  onNoticeConfirmed: (checked: boolean) => void
+  outcome?: TaskOutcome
+  task: TaskRecord
+  updateDraft: (value: string) => void
+}) {
+  const isInformationRequest = experience.workspace === "collect-information"
+
+  if (outcome) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Alert>
+          <CheckIcon />
+          <AlertTitle>{outcome.status}</AlertTitle>
+          <AlertDescription>{outcome.result}</AlertDescription>
+        </Alert>
+        <ContextItem label="Completed" value={outcome.completedAt} />
+        <ContextItem label="Message" value={draft} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {isInformationRequest ? (
+        <Alert>
+          <CircleHelpIcon />
+          <AlertTitle>Coterie needs three roof details</AlertTitle>
+          <AlertDescription>
+            Replacement year, roofing material, and completion timing are not in
+            the current submission.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert variant="destructive">
+          <CircleHelpIcon />
+          <AlertTitle>Cancellation scheduled for Sep 15, 2026</AlertTitle>
+          <AlertDescription>
+            Travelers must receive payment by Sep 12 to prevent cancellation.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <section className="flex flex-col gap-3">
+        <h3 className="font-medium">
+          {isInformationRequest ? "Information needed" : "Notice package"}
+        </h3>
+        <ul className="divide-y border-y text-sm">
+          {(isInformationRequest
+            ? [
+                "Roof replacement year",
+                "Roofing material",
+                "Completion before final inspection",
+              ]
+            : [
+                "Travelers cancellation notice",
+                "Online payment instructions",
+                "Agency contact information",
+              ]
+          ).map((item) => (
+            <li className="flex items-center justify-between gap-4 py-3" key={item}>
+              <span>{item}</span>
+              <Badge variant="secondary">
+                {isInformationRequest ? "Missing" : "Attached"}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <SparklesIcon />
+          <h3 className="font-medium">AI-prepared message</h3>
+        </div>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>To</FieldLabel>
+            <InputGroup>
+              <InputGroupInput
+                readOnly
+                value={isInformationRequest ? "bob@bscbuilders.com" : "dana@botl.com"}
+              />
+            </InputGroup>
+          </Field>
+          <Field>
+            <FieldLabel>Subject</FieldLabel>
+            <InputGroup>
+              <InputGroupInput
+                readOnly
+                value={
+                  isInformationRequest
+                    ? "Roof details needed for Coterie"
+                    : "Action required: Travelers cancellation notice"
+                }
+              />
+            </InputGroup>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`task-message-${task.id}`}>Message</FieldLabel>
+            <Textarea
+              className="min-h-56 resize-y"
+              id={`task-message-${task.id}`}
+              onChange={(event) => updateDraft(event.target.value)}
+              value={draft}
+            />
+            <FieldDescription>
+              Review the AI draft before sending it to the client.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </section>
+
+      {!isInformationRequest ? (
+        <FieldSet>
+          <FieldLegend>Before sending</FieldLegend>
+          <FieldGroup>
+            <Field orientation="horizontal">
+              <Checkbox
+                checked={noticeConfirmed}
+                id="confirm-cancellation-notice"
+                onCheckedChange={(checked) => onNoticeConfirmed(checked === true)}
+              />
+              <FieldLabel htmlFor="confirm-cancellation-notice">
+                I verified the cancellation date, client recipient, and attached
+                carrier notice.
+              </FieldLabel>
+            </Field>
+          </FieldGroup>
+        </FieldSet>
+      ) : null}
+    </div>
   )
 }
 
@@ -1444,6 +1999,299 @@ type QuoteRequestLayerProps = LayerRouteProps & {
   >
 }
 
+type TaskWorkspaceLayerProps = LayerRouteProps & {
+  setTaskInteraction: React.Dispatch<React.SetStateAction<TaskInteractionState>>
+  taskInteraction: TaskInteractionState
+}
+
+const renewalComparisonRows = [
+  {
+    change: "+$5,080",
+    expiring: "$42,180",
+    label: "Annual premium",
+    renewal: "$47,260",
+    tone: "material",
+  },
+  {
+    change: "+$400,000",
+    expiring: "$5,000,000",
+    label: "Building limit",
+    renewal: "$5,400,000",
+    tone: "positive",
+  },
+  {
+    change: "No change",
+    expiring: "$10,000",
+    label: "All other perils deductible",
+    renewal: "$10,000",
+    tone: "neutral",
+  },
+  {
+    change: "+$15,000",
+    expiring: "$10,000",
+    label: "Wind / hail deductible",
+    renewal: "$25,000",
+    tone: "material",
+  },
+  {
+    change: "Reduced",
+    expiring: "Full limit",
+    label: "Water damage",
+    renewal: "$250,000 sublimit",
+    tone: "material",
+  },
+]
+
+function TaskWorkspaceLayer(props: TaskWorkspaceLayerProps) {
+  const { taskId } = useParams()
+  const task = findTask(taskId ?? props.activeTaskId)
+  const account = findAccount(task.accountId)
+  const opportunity = findOpportunity(task.opportunityId)
+  const experience = taskExperience(task)
+  const outcome = props.taskInteraction.outcomes[task.id]
+
+  const completeReview = (
+    status: TaskOutcome["status"],
+    result: string
+  ) => {
+    props.setTaskInteraction((current) => ({
+      ...current,
+      outcomes: {
+        ...current.outcomes,
+        [task.id]: {
+          completedAt: "Aug 27, 2026, 2:24 PM",
+          result,
+          status,
+        },
+      },
+    }))
+  }
+
+  if (experience.workspace !== "review-quote") {
+    return (
+      <PageLayerFrame
+        {...props}
+        breadcrumb={
+          <ObjectBreadcrumb
+            activeTaskId={task.id}
+            items={[{ current: true, label: task.title }]}
+            navigateInsideLayer={props.navigateInsideLayer}
+          />
+        }
+      >
+        <section className="flex max-w-3xl flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <Badge className="w-fit" variant="outline">
+              Task workspace
+            </Badge>
+            <h1 className="text-2xl font-semibold text-balance">{task.title}</h1>
+            <p className="text-sm text-muted-foreground text-pretty">
+              {experience.summary}
+            </p>
+          </div>
+          <div className="grid gap-4 border-y py-4 md:grid-cols-4">
+            <ContextItem label="Account" value={task.accountName} />
+            <ContextItem label="Line" value={task.line} />
+            <ContextItem label="Due" value={task.due} />
+            <ContextItem label="Assignee" value={task.assignee} />
+          </div>
+          <Button
+            className="w-fit"
+            onClick={() =>
+              props.navigateInsideLayer(`/accounts/${account.id}`, task.id)
+            }
+            type="button"
+          >
+            <ExternalLinkIcon data-icon="inline-start" />
+            Open account
+          </Button>
+        </section>
+      </PageLayerFrame>
+    )
+  }
+
+  return (
+    <PageLayerFrame
+      {...props}
+      breadcrumb={
+        <ObjectBreadcrumb
+          activeTaskId={task.id}
+          items={[
+            { label: "My tasks", path: "/tasks" },
+            { current: true, label: task.title },
+          ]}
+          navigateInsideLayer={props.navigateInsideLayer}
+        />
+      }
+    >
+      <section className="flex min-w-0 flex-col gap-6">
+        <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:justify-between">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Renewal quote</Badge>
+              <Badge variant="secondary">Review required</Badge>
+              <span className="text-sm text-muted-foreground tabular-nums">
+                Due {task.due}
+              </span>
+            </div>
+            <div className="flex min-w-0 flex-col gap-2">
+              <h1 className="text-2xl font-semibold text-balance">
+                Review Hartford renewal quote
+              </h1>
+              <p className="max-w-[68ch] text-sm text-muted-foreground text-pretty">
+                Compare the renewal against the expiring policy and decide what
+                should happen before the terms are presented to the client.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={() =>
+              props.navigateInsideLayer(`/accounts/${account.id}`, task.id)
+            }
+            type="button"
+            variant="outline"
+          >
+            <ExternalLinkIcon data-icon="inline-start" />
+            Open account
+          </Button>
+        </div>
+
+        <section className="grid gap-4 border-y py-4 md:grid-cols-5">
+          <ContextItem label="Account" value={account.name} />
+          <ContextItem label="Opportunity" value={opportunity.name} />
+          <ContextItem label="Carrier" value="The Hartford" />
+          <ContextItem label="Effective date" value={task.effectiveDate} />
+          <ContextItem label="Owner" value={task.assignee} />
+        </section>
+
+        {outcome ? (
+          <Alert>
+            <CheckIcon />
+            <AlertTitle>{outcome.status}</AlertTitle>
+            <AlertDescription>
+              {outcome.result}. Updated {outcome.completedAt}.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <SparklesIcon />
+            <AlertTitle>Two changes need attention</AlertTitle>
+            <AlertDescription>
+              Premium increased 12%, and water damage moved from the full limit
+              to a $250,000 sublimit. The wind and hail deductible also increased.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <section className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-xl font-semibold text-balance">
+                Coverage comparison
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Expiring policy versus the proposed renewal.
+              </p>
+            </div>
+            <div className="overflow-x-auto border-y">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Coverage</TableHead>
+                    <TableHead>Expiring</TableHead>
+                    <TableHead>Renewal</TableHead>
+                    <TableHead>Change</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {renewalComparisonRows.map((row) => (
+                    <TableRow key={row.label}>
+                      <TableCell className="font-medium">{row.label}</TableCell>
+                      <TableCell className="tabular-nums">{row.expiring}</TableCell>
+                      <TableCell className="tabular-nums">{row.renewal}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            row.tone === "material" ? "secondary" : "outline"
+                          }
+                        >
+                          {row.change}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <aside className="flex min-w-0 flex-col gap-6 lg:border-l lg:pl-6">
+            <section className="flex flex-col gap-3">
+              <h2 className="font-semibold">Client priorities</h2>
+              <ul className="flex flex-col gap-3 text-sm text-muted-foreground">
+                <li className="flex gap-2">
+                  <ChevronRightIcon className="shrink-0" />
+                  Keep annual property premium below $50,000.
+                </li>
+                <li className="flex gap-2">
+                  <ChevronRightIcon className="shrink-0" />
+                  Avoid a restricted water-damage limit.
+                </li>
+                <li className="flex gap-2">
+                  <ChevronRightIcon className="shrink-0" />
+                  Deductibles up to $25,000 are acceptable.
+                </li>
+              </ul>
+            </section>
+            <Separator />
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <PaperclipIcon />
+                <h2 className="font-semibold">Source</h2>
+              </div>
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Hartford renewal proposal.pdf</span>
+                <span className="text-muted-foreground">18 pages / received Aug 26</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <FileSearch2Icon />
+                Extracted terms checked against the source document
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <section className="flex flex-wrap items-center justify-end gap-2 border-t pt-5">
+          <Button
+            onClick={() =>
+              completeReview(
+                "Waiting on carrier",
+                "Revision request prepared for the Hartford underwriter"
+              )
+            }
+            type="button"
+            variant="outline"
+          >
+            Request changes
+          </Button>
+          <Button
+            onClick={() =>
+              completeReview(
+                "Ready to present",
+                "Renewal terms approved for the client proposal"
+              )
+            }
+            type="button"
+          >
+            Prepare client proposal
+            <ArrowRightIcon data-icon="inline-end" />
+          </Button>
+        </section>
+      </section>
+    </PageLayerFrame>
+  )
+}
+
 function TaskQuoteRouteRedirect({
   activeTaskId,
   origin,
@@ -1488,6 +2336,24 @@ function AccountLayer(props: LayerRouteProps) {
   const account = findAccount(accountId)
   const accountOpportunities = opportunitiesForAccount(account.id)
   const primaryOpportunity = accountOpportunities[0]
+  const activePolicy =
+    account.id === "acct-bob-smith-construction"
+      ? {
+          carrier: "The Hartford E&S Binding",
+          name: "Bob Smith Construction search demo policy",
+          number: "POL-BSC-2026-RENOVATION",
+        }
+      : account.id === "acct-bottle-bay"
+        ? {
+            carrier: "The Hartford",
+            name: "Bottle Bay commercial property policy",
+            number: "POL-BBP-2026-1048",
+          }
+        : {
+            carrier: "Current carrier",
+            name: `${account.name} active policy`,
+            number: "Policy on file",
+          }
 
   return (
     <PageLayerFrame {...props}>
@@ -1567,12 +2433,9 @@ function AccountLayer(props: LayerRouteProps) {
           </Table>
         </section>
         <section className="grid gap-4 border-t pt-4 md:grid-cols-3">
-          <ContextItem
-            label="Active policy"
-            value="Bob Smith Construction search demo policy"
-          />
-          <ContextItem label="Carrier" value="The Hartford E&S Binding" />
-          <ContextItem label="Policy number" value="POL-BSC-2026-RENOVATION" />
+          <ContextItem label="Active policy" value={activePolicy.name} />
+          <ContextItem label="Carrier" value={activePolicy.carrier} />
+          <ContextItem label="Policy number" value={activePolicy.number} />
         </section>
         <section className="grid gap-4 border-t pt-4 md:grid-cols-3">
           <ContextItem
@@ -2565,7 +3428,7 @@ function createDirectOrigin(
 }
 
 function fallbackOriginKind(pathname: string): OriginKind | undefined {
-  if (/^\/tasks\/[^/]+\/quoting$/.test(pathname)) {
+  if (/^\/tasks\/[^/]+\/(quoting|workspace)$/.test(pathname)) {
     return "tasks"
   }
 
@@ -2614,7 +3477,7 @@ function historyIndex() {
 }
 
 function taskIdFromPath(pathname: string) {
-  return pathname.match(/^\/tasks\/([^/]+)\/quoting$/)?.[1]
+  return pathname.match(/^\/tasks\/([^/]+)\/(quoting|workspace)$/)?.[1]
 }
 
 function quoteRequestIdFromPath(pathname: string) {
@@ -2709,7 +3572,9 @@ function currentLayerLabel(pathname: string, hash = "") {
   const taskId = taskIdFromPath(pathname)
   if (taskId) {
     const task = findTask(taskId)
-    return `${task.accountName} / Quote requests`
+    return pathname.endsWith("/workspace")
+      ? task.title
+      : `${task.accountName} / Quote requests`
   }
 
   const quoteRequestId = quoteRequestIdFromPath(pathname)

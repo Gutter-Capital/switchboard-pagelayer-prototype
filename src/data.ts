@@ -498,7 +498,7 @@ const taskSeeds: TaskRecord[] = [
   {
     id: "task-bottle-review",
     due: "Sep 3, 2026",
-    title: "Review submitted quote",
+    title: "Review Hartford renewal quote",
     accountId: "acct-bottle-bay",
     accountName: "Bottle Bay Properties",
     opportunityId: "opp-bottle-office",
@@ -513,7 +513,7 @@ const taskSeeds: TaskRecord[] = [
   {
     id: "task-botl-info",
     due: "Sep 4, 2026",
-    title: "Request additional information",
+    title: "Send cancellation notice to BOTL",
     accountId: "acct-botl",
     accountName: "BOTL",
     opportunityId: "opp-botl-warehouse",
