@@ -11,7 +11,7 @@ export type TaskRecord = {
   quoteRequestId?: string
   priority: "High" | "Medium" | "Low"
   assignee: string
-  status: "Open" | "Done"
+  status: "Open" | "Ready for review" | "Done"
   line: string
   stage: string
   effectiveDate: string
@@ -24,6 +24,19 @@ export type AccountRecord = {
   industry: string
   businessType: string
   owner: string
+  activePolicy?: {
+    name: string
+    renewalDate: string
+  }
+  clientSince?: string
+  location?: string
+  relationshipStatus?: string
+  mainContact?: {
+    email: string
+    name: string
+    phone: string
+    role: string
+  }
   selected?: boolean
 }
 
@@ -124,6 +137,19 @@ export const bobAccount: AccountRecord = {
   industry: "General Contractor",
   businessType: "Construction",
   owner: "a@aol.com",
+  activePolicy: {
+    name: "The Hartford E&S Binding",
+    renewalDate: "Oct 3, 2026",
+  },
+  clientSince: "2022",
+  location: "Wichita, Kansas",
+  relationshipStatus: "Active client",
+  mainContact: {
+    email: "bob@bscbuilders.com",
+    name: "Bob Smith",
+    phone: "(316) 555-0148",
+    role: "Owner",
+  },
 }
 
 export const accounts: AccountRecord[] = [
@@ -135,6 +161,12 @@ export const accounts: AccountRecord[] = [
     industry: "Property Owner",
     businessType: "Real estate",
     owner: "a@aol.com",
+    mainContact: {
+      email: "maya@bottlebay.com",
+      name: "Maya Chen",
+      phone: "(415) 555-0184",
+      role: "Director of operations",
+    },
   },
   {
     id: "acct-botl",
@@ -143,6 +175,12 @@ export const accounts: AccountRecord[] = [
     industry: "Bottling",
     businessType: "Manufacturing",
     owner: "a@aol.com",
+    mainContact: {
+      email: "dana@botl.com",
+      name: "Dana Ortiz",
+      phone: "(316) 555-0192",
+      role: "Controller",
+    },
   },
   {
     id: "acct-new-life",
@@ -151,6 +189,12 @@ export const accounts: AccountRecord[] = [
     industry: "Religious organization",
     businessType: "Nonprofit",
     owner: "a@aol.com",
+    mainContact: {
+      email: "marcus@newlifeoutreach.org",
+      name: "Marcus Reed",
+      phone: "(316) 555-0116",
+      role: "Executive pastor",
+    },
   },
   {
     id: "acct-seabag",
@@ -159,6 +203,12 @@ export const accounts: AccountRecord[] = [
     industry: "Marine contractor",
     businessType: "Contractor",
     owner: "a@aol.com",
+    mainContact: {
+      email: "jordan@seabagmarine.com",
+      name: "Jordan Lee",
+      phone: "(305) 555-0139",
+      role: "Operations manager",
+    },
   },
   {
     id: "acct-acme-construction",
@@ -167,6 +217,12 @@ export const accounts: AccountRecord[] = [
     industry: "General Contractor",
     businessType: "Construction",
     owner: "a@aol.com",
+    mainContact: {
+      email: "aaron@acmeconstruction.com",
+      name: "Aaron Miller",
+      phone: "(316) 555-0175",
+      role: "President",
+    },
   },
   {
     id: "acct-valley-medical",
@@ -175,6 +231,12 @@ export const accounts: AccountRecord[] = [
     industry: "Healthcare",
     businessType: "Medical center",
     owner: "matt@aol.com",
+    mainContact: {
+      email: "priya@valleymedical.org",
+      name: "Priya Shah",
+      phone: "(913) 555-0163",
+      role: "Chief financial officer",
+    },
   },
   {
     id: "acct-riverside",
@@ -183,6 +245,12 @@ export const accounts: AccountRecord[] = [
     industry: "Industrial manufacturing",
     businessType: "Manufacturing",
     owner: "a@aol.com",
+    mainContact: {
+      email: "elena@riversidemfg.com",
+      name: "Elena Ruiz",
+      phone: "(316) 555-0127",
+      role: "Risk manager",
+    },
   },
   {
     id: "acct-harbor-craft",
@@ -493,6 +561,82 @@ const taskSeeds: TaskRecord[] = [
     status: "Open",
     line: "Commercial Property",
     stage: "Quoting in progress",
+    effectiveDate: "Oct 3, 2026",
+  },
+  {
+    id: "task-bob-property-options",
+    due: "Sep 2, 2026",
+    title: "Review new Accident Fund property quote",
+    accountId: bobAccount.id,
+    accountName: bobAccount.name,
+    opportunityId: "opp-bob-renovation",
+    opportunityName: "Bob Smith municipal renovation package",
+    quoteRequestId: "qr-bob-accident-fund-property",
+    priority: "High",
+    assignee: "a@aol.com",
+    status: "Ready for review",
+    line: "Commercial Property",
+    stage: "Quoting in progress",
+    effectiveDate: "Oct 3, 2026",
+  },
+  {
+    id: "task-bob-gl-exposure",
+    due: "Sep 4, 2026",
+    title: "Confirm updated subcontractor exposure",
+    accountId: bobAccount.id,
+    accountName: bobAccount.name,
+    opportunityId: "opp-bob-general-liability-renewal",
+    opportunityName: "Bob Smith general liability renewal",
+    priority: "Medium",
+    assignee: "a@aol.com",
+    status: "Open",
+    line: "General Liability",
+    stage: "Preparing application",
+    effectiveDate: "Oct 3, 2026",
+  },
+  {
+    id: "task-bob-workers-comp-payroll",
+    due: "Sep 8, 2026",
+    title: "Verify payroll split by class code",
+    accountId: bobAccount.id,
+    accountName: bobAccount.name,
+    opportunityId: "opp-bob-workers-comp-renewal",
+    opportunityName: "Bob Smith workers compensation renewal",
+    priority: "Medium",
+    assignee: "a@aol.com",
+    status: "Open",
+    line: "Workers Compensation",
+    stage: "Market selection",
+    effectiveDate: "Jan 1, 2027",
+  },
+  {
+    id: "task-bob-auto-mvr",
+    due: "Sep 10, 2026",
+    title: "Review MVR follow-ups",
+    accountId: bobAccount.id,
+    accountName: bobAccount.name,
+    opportunityId: "opp-bob-commercial-auto-fleet",
+    opportunityName: "Bob Smith commercial auto fleet renewal",
+    priority: "Medium",
+    assignee: "a@aol.com",
+    status: "Open",
+    line: "Commercial Auto",
+    stage: "Awaiting underwriting",
+    effectiveDate: "Nov 15, 2026",
+  },
+  {
+    id: "task-bob-equipment-values",
+    due: "Sep 11, 2026",
+    title: "Confirm cranes, lifts, and rented equipment",
+    accountId: bobAccount.id,
+    accountName: bobAccount.name,
+    opportunityId: "opp-bob-contractors-equipment",
+    opportunityName: "Bob Smith contractors equipment floater",
+    priority: "Low",
+    assignee: "a@aol.com",
+    status: "Open",
+    line: "Contractors Equipment",
+    stage: "Preparing application",
     effectiveDate: "Oct 3, 2026",
   },
   {
@@ -871,6 +1015,32 @@ export const quoteRequests: QuoteRequestRecord[] = [
         reviewStatus: "Extracted and reviewed",
         selected: true,
       },
+      {
+        id: "option-rt-enhanced-limits",
+        label: "Enhanced limits",
+        premium: "$42,450",
+        totalPremium: "$43,900",
+        deductible: "$25,000",
+        limit: "$6,000,000",
+        conditions: "Roof limitation endorsement",
+        quoteNumber: "RTS-99743-B",
+        underwriter: "Nina Alvarez",
+        sourceDocument: "RT Specialty quote.pdf",
+        reviewStatus: "Extracted and reviewed",
+      },
+      {
+        id: "option-rt-low-deductible",
+        label: "Lower deductible",
+        premium: "$45,900",
+        totalPremium: "$47,600",
+        deductible: "$10,000",
+        limit: "$5,000,000",
+        conditions: "Roof limitation endorsement",
+        quoteNumber: "RTS-99743-C",
+        underwriter: "Nina Alvarez",
+        sourceDocument: "RT Specialty quote.pdf",
+        reviewStatus: "Extracted and reviewed",
+      },
     ],
     activity: [
       {
@@ -934,6 +1104,19 @@ export const quoteRequests: QuoteRequestRecord[] = [
         limit: "$5,000,000",
         conditions: "Protective safeguards endorsement",
         quoteNumber: "AF-33091-B",
+        underwriter: "Accident Fund property desk",
+        sourceDocument: "Accident Fund quote.pdf",
+        reviewStatus: "Extraction needs review",
+      },
+      {
+        id: "option-af-standard-deductible",
+        label: "Standard deductible",
+        premium: "$40,850",
+        totalPremium: "$42,600",
+        deductible: "$25,000",
+        limit: "$5,000,000",
+        conditions: "Protective safeguards endorsement",
+        quoteNumber: "AF-33091-C",
         underwriter: "Accident Fund property desk",
         sourceDocument: "Accident Fund quote.pdf",
         reviewStatus: "Extraction needs review",
